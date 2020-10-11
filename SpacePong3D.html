@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+	<title>SpacePong3D</title>
+
+	<style>
+		body {
+			background-color: rgb(0, 0, 0);
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+		}
+	</style>
+
+</head>
+
+<body>
+	<div id="container"> </div>
+
+	<div id="gametitle" style="position:fixed; left:2%; top:4%; font-family:arial; font-type:bold; color:lightgrey;">
+		SpacePong3D
+	</div>
+
+	<div id="gravity" style="position:fixed; left:2%; top:8%; font-family:arial; color:rgb(100,100,100); border:thin solid;">
+		Gravity OFF
+	</div>
+
+	<div id="difficulty" style="position:fixed; left:2%; top:13%; font-family:arial; color:rgb(100,100,100); border:thin solid;">
+		Difficulty: MEDIUM
+	</div>
+
+	<div id="volume" style="position:fixed; left:2%; top:18%; font-family:arial; color:rgb(100,100,100); border:thin solid;">
+		SoundLevel: OFF
+	</div>
+
+	<div id="help1" style="position:fixed; right:1%; bottom:8%; font-family:arial; font-size:10px; color:lightgrey;">
+		Desktop: Press 'M' to control paddle with Mouse
+	</div>
+
+	<div id="help2" style="position:fixed; right:1%; bottom:4%; font-family:arial; font-size:10px; color:lightgrey;">
+		Mobile: slow Swipe to control paddle
+	</div>
+
+	<div id="bluescore" style="position:fixed; right:18%; top:4%; font-family:arial; font-type:bold; color:blue;">
+		0
+	</div>
+
+	<div id="redscore" style="position:fixed; right:3%; top:4%; font-family:arial; font-type:bold; color:red;">
+		0
+	</div>
+
+	<div id="winner" style="position:fixed; left:40%; top:20%; font-family:arial; font-type:bold; color:black;">
+
+	</div>
+  
+	<div id="networkInfo" style="position:fixed; left:40%; top:20%; font-size:18px; font-family:arial; font-type:bold; color:blue;">
+
+	</div>
+
+	<input id="textInput" style="position:fixed; bottom:6%; font-size:10px;" placeholder="enter-your-name-here" onkeyup="textEnterHandler(true, event)">
+	<input id="submitButton" style="position:fixed; bottom:2%; font-size:10px;" type="button" value="Join Lobby" onclick="textEnterHandler(false, null)">
+
+	<div id="chatLine1" style="position:fixed; bottom:19%; font-family:arial; font-size:10px; font-type:bold; color:orange">
+		
+	</div>
+	<div id="chatLine2" style="position:fixed; bottom:16%; font-family:arial; font-size:10px; font-type:bold; color:orange">
+
+	</div>
+	<div id="chatLine3" style="position:fixed; bottom:13%; font-family:arial; font-size:10px; font-type:bold; color:orange">
+
+	</div>
+	<div id="chatLine4" style="position:fixed; bottom:10%; font-family:arial; font-size:10px; font-type:bold; color:yellow">
+		Multiplayer: Enter your name and press Join Lobby
+	</div>
+
+	<!-- <script src="js/three.min.js"></script> -->
+	<script src="http://cdnjs.cloudflare.com/ajax/libs/three.js/r69/three.min.js"></script>
+	<script src="js/threex.texturecube.js"></script>
+	<script src="js/threex.skymap.js"></script>
+	<script src="js/threex.keyboardstate.js"></script>
+	<script src="js/pongVirtualJoystick.js"></script>
+	<script src="js/threex.GameTimer.js"></script>
+	<script src="js/threex.geometricglowmesh.js"></script>
+	<script src="js/webaudioxGameSounds.js"></script>
+	<script src="http://cdn.pubnub.com/pubnub.min.js"></script>
+
+	<script src="js/webrtc-beta-pubnub.0.7.0.js"></script>
+	
+
+	<script>
+		var windowWidth = window.innerWidth;
+		var windowHeight = window.innerHeight;
+		var halfWindowWidth = windowWidth / 2;
+		var halfWindowHeight = windowHeight / 2;
+		var scene = new THREE.Scene();
+		var camera = new THREE.PerspectiveCamera(65, windowWidth / windowHeight, 1, 4000);
+		var clock = new THREE.Clock();
+		var missedTimer = new THREEx.GameTimer(3);
+		var cutSceneTimer = new THREEx.GameTimer(6);
+		var hereNowTimer = new THREEx.GameTimer(7);
+		var acceptTimer = new THREEx.GameTimer(20);
+		var beginBannerTimer = new THREEx.GameTimer(3);
+		var networkTimer = new THREEx.GameTimer(0.08);
+		var showingBeginBanner = false;
+		var runningNetworkGame = false;
+		var runningHereNow = false;
+		var runningAcceptTimer = false;
+		var keyboard = new THREEx.KeyboardState();
+		var joystick = new VirtualJoystick({
+			mouseSupport: true,
+			hideJoystick: true
+		});
+
+		var renderer = new THREE.WebGLRenderer({
+			antialias: true
+		});
+		renderer.setClearColor('rgb(0,0,0)', 1);
+		renderer.setSize(windowWidth, windowHeight);
+		document.getElementById("container").appendChild(renderer.domElement);
+		window.addEventListener('resize', onWindowResize, false);
+
+		var gameReset = false;
+		var frameTime = 0;
+		var firstTouchMove = true;
+		var joystickDampening = 3;//2
+		var deltaXDifference = 0;
+		var deltaYDifference = 0;
+		var oldDeltaX = 0;
+		var oldDeltaY = 0;
+		var newDeltaX = 0;
+		var newDeltaY = 0;
+
+		var ballSpeed = 0;
+		var ballDirection = new THREE.Vector3(0, 0, 0);
+		var gravityOn = false;
+		var ballRadius = 3;
+		var paddleWidth = 20;
+		var paddleHeight = 14;
+		var paddleDepth = 4;
+		var halfPaddleWidth = paddleWidth / 2;
+		var halfPaddleHeight = paddleHeight / 2;
+		var arenaWidth = 100;
+		var arenaHeight = 60;
+		var arenaDepth = 200;
+		var halfArenaWidth = arenaWidth / 2;
+		var halfArenaHeight = arenaHeight / 2;
+		var halfArenaDepth = arenaDepth / 2;
+		var rightWall = (arenaWidth / 2) - halfPaddleWidth;
+		var leftWall = (-arenaWidth / 2) + halfPaddleWidth;
+		var topWall = (arenaHeight / 2) - halfPaddleHeight;
+		var bottomWall = (-arenaHeight / 2) + halfPaddleHeight;
+		var collisionResult = false;
+		var bluePaddleMissed = false;
+		var redPaddleMissed = false;
+		var redPaddleDesiredDirection = new THREE.Vector3(0, 0, 0);
+		var redPaddleFixedPosZ = 0;
+		var bluePaddleFixedPosZ = 0;
+		var mouseControl = false;
+		var blueScore = 0;
+		var redScore = 0;
+		var resetScores = true;
+		var blueWins = false;
+		var redWins = false;
+		var winnerCutScene = false;
+		var cameraAngle = 0;
+		var youAreBlue = true;
+		var ballTowardsBlue = true;
+		var sentGameState = false;
+
+		// stars
+		var i, r = 500, vertex, s, starsGeometry = new THREE.Geometry();
+
+		for ( i = 0; i < 500; i ++ ) {
+
+			vertex = new THREE.Vector3();
+			vertex.x = Math.random() * 2 - 1;
+			vertex.y = Math.random() * 2;
+			vertex.z = Math.random() * 2 - 1;
+			vertex.multiplyScalar( r );
+
+			//stars must appear above ground
+			//if(vertex.y < 0)
+				//continue; 
+			starsGeometry.vertices.push( vertex ); //else
+
+		}
+
+		var stars;
+		var starsMaterials = [
+			new THREE.PointCloudMaterial( { color: 0xdddd00, size: 1, sizeAttenuation: false } ),
+			new THREE.PointCloudMaterial( { color: 0xffff00, size: 1, sizeAttenuation: false } ),
+			new THREE.PointCloudMaterial( { color: 0x00dddd, size: 1, sizeAttenuation: false } ),
+			new THREE.PointCloudMaterial( { color: 0x44dddd, size: 1, sizeAttenuation: false } ),
+			new THREE.PointCloudMaterial( { color: 0xeeeeee, size: 1, sizeAttenuation: false } ),
+			new THREE.PointCloudMaterial( { color: 0xaa33ee, size: 1, sizeAttenuation: false } )
+		];
+
+		for ( i = 0; i < 7; i ++ ) {
+
+			stars = new THREE.PointCloud( starsGeometry, starsMaterials[ i % 6 ] );
+
+			//stars.rotation.x = Math.random();
+			stars.rotation.y = Math.random() * (Math.PI * 2);
+			//stars.rotation.z = Math.random();
+
+			stars.updateMatrix();
+			stars.matrixAutoUpdate = false;
+
+			scene.add( stars );
+
+		}
+		
+		var skyCubeTexture = THREEx.createTextureCube([
+			'images/skybox/moondust-xpos.png', 'images/skybox/moondust-xneg.png',
+			'images/skybox/moondust-ypos.png', 'images/skybox/moondust-yneg.png',
+			'images/skybox/moondust-zpos.png', 'images/skybox/moondust-zneg.png',
+		]);
+		var skyMesh = THREEx.createSkymap({
+			textureCube: skyCubeTexture,
+			cubeW: 2000,
+			cubeH: 300,
+			cubeD: 1000
+		});
+		scene.add(skyMesh);
+
+		var backTriangle = new THREE.Triangle(new THREE.Vector3(-halfArenaWidth, halfArenaHeight, -halfArenaDepth), new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, -halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, -halfArenaDepth));
+		var backTriangleNormal = backTriangle.normal();
+		var frontTriangle = new THREE.Triangle(new THREE.Vector3(halfArenaWidth, -halfArenaHeight, halfArenaDepth), new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, halfArenaDepth), new THREE.Vector3(-halfArenaWidth, halfArenaHeight, halfArenaDepth));
+		var frontTriangleNormal = frontTriangle.normal();
+		var rightTriangle = new THREE.Triangle(new THREE.Vector3(halfArenaWidth, -halfArenaHeight, -halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, halfArenaDepth), new THREE.Vector3(halfArenaWidth, halfArenaHeight, halfArenaDepth));
+		var rightTriangleNormal = rightTriangle.normal();
+		var leftTriangle = new THREE.Triangle(new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, -halfArenaDepth), new THREE.Vector3(-halfArenaWidth, halfArenaHeight, -halfArenaDepth), new THREE.Vector3(-halfArenaWidth, halfArenaHeight, halfArenaDepth));
+		var leftTriangleNormal = leftTriangle.normal();
+		var topTriangle = new THREE.Triangle(new THREE.Vector3(halfArenaWidth, halfArenaHeight, -halfArenaDepth), new THREE.Vector3(halfArenaWidth, halfArenaHeight, halfArenaDepth), new THREE.Vector3(-halfArenaWidth, halfArenaHeight, halfArenaDepth));
+		var topTriangleNormal = topTriangle.normal();
+		var bottomTriangle = new THREE.Triangle(new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, -halfArenaDepth), new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, halfArenaDepth));
+		var bottomTriangleNormal = bottomTriangle.normal();
+
+		var lineGeometry = new THREE.Geometry();
+		var vertArray = lineGeometry.vertices;
+		vertArray.push(new THREE.Vector3(-halfArenaWidth, halfArenaHeight, halfArenaDepth), new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, halfArenaDepth),
+			new THREE.Vector3(halfArenaWidth, halfArenaHeight, halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, halfArenaDepth),
+			new THREE.Vector3(-halfArenaWidth, halfArenaHeight, halfArenaDepth), new THREE.Vector3(halfArenaWidth, halfArenaHeight, halfArenaDepth),
+			new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, halfArenaDepth),
+
+			new THREE.Vector3(-halfArenaWidth, halfArenaHeight, -halfArenaDepth), new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, -halfArenaDepth),
+			new THREE.Vector3(halfArenaWidth, halfArenaHeight, -halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, -halfArenaDepth),
+			new THREE.Vector3(-halfArenaWidth, halfArenaHeight, -halfArenaDepth), new THREE.Vector3(halfArenaWidth, halfArenaHeight, -halfArenaDepth),
+			new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, -halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, -halfArenaDepth),
+
+			new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, halfArenaDepth), new THREE.Vector3(-halfArenaWidth, -halfArenaHeight, -halfArenaDepth),
+			new THREE.Vector3(halfArenaWidth, -halfArenaHeight, halfArenaDepth), new THREE.Vector3(halfArenaWidth, -halfArenaHeight, -halfArenaDepth),
+			new THREE.Vector3(-halfArenaWidth, halfArenaHeight, halfArenaDepth), new THREE.Vector3(-halfArenaWidth, halfArenaHeight, -halfArenaDepth),
+			new THREE.Vector3(halfArenaWidth, halfArenaHeight, halfArenaDepth), new THREE.Vector3(halfArenaWidth, halfArenaHeight, -halfArenaDepth)
+		);
+		lineGeometry.computeLineDistances();
+		var lineMaterial = new THREE.LineBasicMaterial({
+			color: 'rgb(0,255,0)'
+		});
+		var lineArena = new THREE.Line(lineGeometry, lineMaterial, THREE.LinePieces);
+		scene.add(lineArena);
+		 //lineArena.visible = false;
+
+		 //blue paddle
+		var boxGeometry = new THREE.BoxGeometry(paddleWidth, paddleHeight, paddleDepth);
+		var boxMaterial = new THREE.MeshBasicMaterial({
+			transparent: true,
+			opacity: 0,
+			color: 'rgb(0,0,0)'
+		});
+		var bluePaddle = new THREE.Mesh(boxGeometry, boxMaterial);
+		scene.add(bluePaddle);
+
+		var blueGlow = new THREEx.GeometricGlowMesh(bluePaddle);
+		blueGlow.outsideMesh.scale.set(1.08, 1.08, 1);
+		bluePaddle.add(blueGlow.object3d);
+
+		var blueInsideUniforms = blueGlow.insideMesh.material.uniforms;
+		var blueOutsideUniforms = blueGlow.outsideMesh.material.uniforms;
+		blueInsideUniforms.glowColor.value.set(new THREE.Color('rgb(0,0,255)'));
+		blueOutsideUniforms.glowColor.value.set(new THREE.Color('rgb(0,0,50)'));
+		var blueInsideCoef = 1.2;
+
+		 //var insideFlag = true;
+		blueInsideUniforms.coeficient.value = blueInsideCoef; //range 0 - 2
+		blueInsideUniforms.power.value = 0.8; //range 0 - 5
+		blueOutsideUniforms.coeficient.value = 1.1; //range 0 - 2
+		blueOutsideUniforms.power.value = 0.8; //range 0 - 5
+
+		 //red paddle
+		var boxGeometry = new THREE.BoxGeometry(paddleWidth, paddleHeight, paddleDepth);
+		var boxMaterial = new THREE.MeshBasicMaterial({
+			transparent: true,
+			opacity: 0,
+			color: 'rgb(0,0,0)'
+		});
+		var redPaddle = new THREE.Mesh(boxGeometry, boxMaterial);
+		scene.add(redPaddle);
+
+		var redGlow = new THREEx.GeometricGlowMesh(redPaddle);
+		redGlow.outsideMesh.scale.set(1.08, 1.08, 1);
+		redPaddle.add(redGlow.object3d);
+
+		var redInsideUniforms = redGlow.insideMesh.material.uniforms;
+		var redOutsideUniforms = redGlow.outsideMesh.material.uniforms;
+		redInsideUniforms.glowColor.value.set(new THREE.Color('rgb(255,0,0)'));
+		redOutsideUniforms.glowColor.value.set(new THREE.Color('rgb(50,0,0)'));
+		var redInsideCoef = 1.2;
+
+		redInsideUniforms.coeficient.value = redInsideCoef; //range 0 - 2
+		redInsideUniforms.power.value = 0.8; //range 0 - 5
+		redOutsideUniforms.coeficient.value = 1.1; //range 0 - 2
+		redOutsideUniforms.power.value = 0.8; //range 0 - 5
+
+		 //ball
+		var sphereGeometry = new THREE.SphereGeometry(ballRadius, 10, 10);
+		var sphereMaterial = new THREE.MeshBasicMaterial({
+			transparent: true,
+			opacity: 0,
+			color: 'rgb(0,0,0)'
+		});
+		var ball = new THREE.Mesh(sphereGeometry, sphereMaterial);
+		scene.add(ball);
+
+		var ballGlow = new THREEx.GeometricGlowMesh(ball);
+		ballGlow.outsideMesh.scale.set(1.2, 1.2, 1.2);
+		ball.add(ballGlow.object3d);
+
+		var ballInsideUniforms = ballGlow.insideMesh.material.uniforms;
+		var ballOutsideUniforms = ballGlow.outsideMesh.material.uniforms;
+		ballInsideUniforms.glowColor.value.set(new THREE.Color('rgb(255,255,255)'));
+		ballOutsideUniforms.glowColor.value.set(new THREE.Color('rgb(35,35,35)'));
+		var ballInsideCoef = 1.1;
+
+		ballInsideUniforms.coeficient.value = ballInsideCoef; //range 0 - 2
+		ballInsideUniforms.power.value = 0.8; //range 0 - 5
+		ballOutsideUniforms.coeficient.value = 1.1; //range 0 - 2
+		ballOutsideUniforms.power.value = 0.8; //range 0 - 5
+		var ballGlowFlag = false;
+
+		 // Circle
+		var circleRadius = ballRadius;
+		var circleShape = new THREE.Shape();
+		circleShape.moveTo(0, circleRadius);
+		circleShape.quadraticCurveTo(circleRadius, circleRadius, circleRadius, 0);
+		circleShape.quadraticCurveTo(circleRadius, -circleRadius, 0, -circleRadius);
+		circleShape.quadraticCurveTo(-circleRadius, -circleRadius, -circleRadius, 0);
+		circleShape.quadraticCurveTo(-circleRadius, circleRadius, 0, circleRadius);
+
+		var discGeometry = new THREE.ShapeGeometry(circleShape);
+		var discMaterial = new THREE.MeshBasicMaterial({
+			color: 'rgb(100,100,100)',
+			transparent: true,
+			opacity: 0.5
+		});
+		var disc1 = new THREE.Mesh(discGeometry, discMaterial);
+		scene.add(disc1);
+		var disc2 = new THREE.Mesh(discGeometry, discMaterial);
+		scene.add(disc2);
+		var disc3 = new THREE.Mesh(discGeometry, discMaterial);
+		scene.add(disc3);
+		var disc4 = new THREE.Mesh(discGeometry, discMaterial);
+		scene.add(disc4);
+
+		updateHUD();
+
+		bluePaddle.position.x = 0.0;
+		bluePaddle.position.y = 0.0;
+		bluePaddleFixedPosZ = arenaDepth / 2 + paddleDepth;
+		bluePaddle.position.z = bluePaddleFixedPosZ;
+
+		redPaddle.position.x = 0.0;
+		redPaddle.position.y = 0.0;
+		redPaddleFixedPosZ = -arenaDepth / 2 - paddleDepth;
+		redPaddle.position.z = redPaddleFixedPosZ;
+			
+		camera.position.z = bluePaddleFixedPosZ + 56;
+
+		disc1.position.set(halfArenaWidth, 0, 0);
+		disc1.rotation.set(0, Math.PI / -2, 0);
+		disc2.position.set(-halfArenaWidth, 0, 0);
+		disc2.rotation.set(0, Math.PI / 2, 0);
+		disc3.position.set(0, halfArenaHeight, 0);
+		disc3.rotation.set(Math.PI / 2, 0, 0);
+		disc4.position.set(0, -halfArenaHeight, 0);
+		disc4.rotation.set(Math.PI / -2, 0, 0);
+
+		document.getElementById("gravity").onclick = gravityClickHandler;
+
+		var difficultyLevel = 1;
+		var redPaddleMaxSpeed = 110;
+		document.getElementById("difficulty").onclick = difficultyClickHandler;
+
+		var soundLevel = 0;
+		var gameSoundVolume = 0.0;
+		document.getElementById("volume").onclick = volumeClickHandler;
+
+		var gameSounds  = new WebAudiox.GameSounds();
+		gameSounds.lineOut.volume = 0.0;
+		gameSounds.listenerFollow(camera);
+
+		var bounceSoundUrl = 'sounds/mediumPong.mp3';
+		var paddleHitSoundUrl = 'sounds/lowPong.mp3';
+		var paddleMissSoundUrl = 'sounds/ballMiss.mp3';
+		var paddleWinSoundUrl = 'sounds/winner.mp3';
+		var winCutSceneSoundUrl = 'sounds/synthHit.mp3';
+
+		var bounceSound = new WebAudiox.GameSound(gameSounds);
+		bounceSound.load(bounceSoundUrl);
+		var paddleHitSound = new WebAudiox.GameSound(gameSounds);
+		paddleHitSound.load(paddleHitSoundUrl);
+		var paddleMissSound = new WebAudiox.GameSound(gameSounds);
+		paddleMissSound.load(paddleMissSoundUrl);
+		var paddleWinSound = new WebAudiox.GameSound(gameSounds);
+		paddleWinSound.load(paddleWinSoundUrl);
+		var winCutSceneSound = new WebAudiox.GameSound(gameSounds);
+		winCutSceneSound.load(winCutSceneSoundUrl);
+
+		var allSoundsLoaded = false;
+		
+		
+		
+		animate();
+
+
+		function animate() {
+			//debug output
+			//document.getElementById('networkInfo').innerHTML = "ballSpeed: " + ballSpeed;
+
+			if (!allSoundsLoaded) {
+				if (bounceSound.loaded && paddleHitSound.loaded && paddleMissSound.loaded &&
+					paddleWinSound.loaded && winCutSceneSound.loaded) {
+					gameReset = true;
+					allSoundsLoaded = true;
+				}
+			}
+
+			requestAnimationFrame(animate);
+
+			frameTime = clock.getDelta();
+			
+			
+			
+			if(showingBeginBanner){
+				beginBannerTimer.run(frameTime);
+				if (beginBannerTimer.alarmSounding){
+					document.getElementById('networkInfo').innerHTML = "";
+					showingBeginBanner = false;
+				}
+			}
+			
+			if (runningHereNow){
+				hereNowTimer.run(frameTime);
+				if (hereNowTimer.alarmSounding){
+					runHereNow();
+					runningHereNow = false;
+				}
+			}
+			
+			if (runningAcceptTimer){
+				acceptTimer.run(frameTime);
+				if (acceptTimer.alarmSounding){
+					checkIfMatchAccepted();
+					runningAcceptTimer = false;
+				}
+			}
+
+			gameSounds.update(frameTime);
+
+			if (winnerCutScene) {
+
+				cameraAngle += frameTime;
+				if (cameraAngle >= 360) cameraAngle = 0;
+
+				bluePaddle.position.x = 0.0;
+				bluePaddle.position.y = 0.0;
+				bluePaddle.position.z = bluePaddleFixedPosZ;
+
+				redPaddle.position.x = 0.0;
+				redPaddle.position.y = 0.0;
+				redPaddle.position.z = redPaddleFixedPosZ;
+
+				if (blueWins) {
+					camera.lookAt(bluePaddle.position);
+					camera.position.x = bluePaddle.position.x + Math.sin(cameraAngle) * 50;
+					camera.position.z = bluePaddle.position.z + Math.cos(cameraAngle) * 50;
+				}
+				if (redWins) {
+					camera.lookAt(redPaddle.position);
+					camera.position.x = redPaddle.position.x + Math.sin(cameraAngle) * 50;
+					camera.position.z = redPaddle.position.z + Math.cos(cameraAngle) * 50;
+				}
+				camera.position.y = -30;
+			
+				document.getElementById("winner").innerHTML = winnerName + " WINS!";
+
+				cutSceneTimer.run(frameTime);
+
+				if (cutSceneTimer.alarmSounding) {
+					gameReset = true;
+					resetScores = true;
+					cutSceneTimer.reset();
+					winnerCutScene = false;
+				}
+
+			}
+
+			if (gameReset) {
+				
+				if (resetScores) {
+					blueScore = 0;
+					redScore = 0;
+					ballTowardsBlue = true;
+					resetScores = false;
+				}
+				
+				cameraAngle = 0;
+				if (youAreBlue)
+					camera.position.set(0, 0, bluePaddleFixedPosZ + 56);
+				else camera.position.set(0, 0, redPaddleFixedPosZ - 56);
+			
+				ball.position.set(0, 0, 0);
+				ballDirection.set(0, 0, 0);
+
+				if (difficultyLevel == 0)
+					ballSpeed = 70;
+				if (difficultyLevel == 1)
+					ballSpeed = 80;
+				if (difficultyLevel == 2)
+					ballSpeed = 100;
+				if (difficultyLevel == 3)
+					ballSpeed = 130;
+				
+				
+			
+				if (!runningNetworkGame) {
+					if(bluePaddleMissed) ballTowardsBlue = false;
+					else if(redPaddleMissed) ballTowardsBlue = true;
+					else ballTowardsBlue = false;
+					
+					ballDirection.x = 1 - Math.random() * 2;
+					ballDirection.y = 1 - Math.random() * 2;
+					if (!ballTowardsBlue)
+						ballDirection.z = -1.5;
+					else ballDirection.z = 1.5;
+					ballDirection.normalize();
+				}
+				if (runningNetworkGame) {
+			
+					if( (youAreBlue && ballTowardsBlue) || (!youAreBlue && !ballTowardsBlue) ) {
+			
+						if(bluePaddleMissed) ballTowardsBlue = false;
+						else if(redPaddleMissed) ballTowardsBlue = true;
+						else ballTowardsBlue = false;
+			
+						ballDirection.x = 1 - Math.random() * 2;
+						ballDirection.y = 1 - Math.random() * 2;
+						if (!ballTowardsBlue)
+							ballDirection.z = -1.5;
+						else ballDirection.z = 1.5;
+						ballDirection.normalize();
+						
+						updateNetwork();
+						//sendGameState();
+					}
+					
+				}
+
+				bluePaddleMissed = false;
+				redPaddleMissed = false;
+				blueWins = false;
+				redWins = false;
+				missedTimer.reset();
+				
+
+				document.getElementById("bluescore").innerHTML = blueScore;
+				document.getElementById("redscore").innerHTML = redScore;
+
+				document.getElementById("winner").innerHTML = "";
+
+				gameReset = false;
+
+			} //end if (gameReset)
+
+			if (winnerCutScene == false) {
+
+				if (keyboard.pressed("M")) {
+					mouseControl = true;
+				}
+
+
+				newDeltaX = joystick.deltaX();
+				newDeltaY = joystick.deltaY();
+
+				deltaXDifference = newDeltaX - oldDeltaX;
+				deltaYDifference = newDeltaY - oldDeltaY;
+
+
+				if (mouseControl) joystick._pressed = true;
+
+				if (joystick._pressed) {
+
+					if (firstTouchMove == false) {
+						if (youAreBlue) {
+							bluePaddle.position.x += (deltaXDifference / joystickDampening);
+							bluePaddle.position.y -= (deltaYDifference / joystickDampening);
+						}
+						if (!youAreBlue) {
+							redPaddle.position.x -= (deltaXDifference / joystickDampening);
+							redPaddle.position.y -= (deltaYDifference / joystickDampening);
+						}
+					} else if (firstTouchMove == true) {
+						//did the player swipe yet?
+						if (Math.abs(deltaXDifference) > 0 || Math.abs(deltaYDifference) > 0) {
+							//initial touchmove starts rough, so make sure it is smooth first
+							if (Math.abs(deltaXDifference) < 10 && Math.abs(deltaYDifference) < 10)
+								firstTouchMove = false; //only a small first movement will trigger this
+						}
+					}
+
+				} else { //joystick not pressed
+					//reset firstTouchMove
+					firstTouchMove = true;
+				}
+
+				oldDeltaX = newDeltaX;
+				oldDeltaY = newDeltaY;
+
+
+			} //end if(winnerCutScene == false)
+
+			//move ball with optional gravity effect
+			if (!runningNetworkGame) {
+			
+				if(gravityOn)
+					ballDirection.y -= 0.3 * frameTime;
+			
+				ball.translateOnAxis(ballDirection, ballSpeed * frameTime);
+			
+			}
+			else ball.translateOnAxis(ballDirection, ballSpeed * frameTime);	
+			
+			
+			if (bluePaddleMissed == false && redPaddleMissed == false && winnerCutScene == false) {
+
+				if(!runningNetworkGame)
+					updateAI();
+			
+				
+					if (!runningNetworkGame || (!youAreBlue && !ballTowardsBlue) ){
+						//back wall Red Paddle
+						if ((ball.position.z - ballRadius) < redPaddle.position.z) {
+							ball.position.z = redPaddle.position.z + ballRadius;
+
+							collisionResult = checkBallPaddleCollision(ball.position, redPaddle.position);
+							if (collisionResult === true) {
+								paddleHitSound.play({
+									volume: gameSoundVolume * 3,
+									position: ball.position
+								});
+								ballDirection.reflect(backTriangleNormal);
+								//allow steering
+								ballDirection.x += redPaddleDesiredDirection.x;
+								ballDirection.y += redPaddleDesiredDirection.y;
+								ballDirection.z += (Math.abs(redPaddleDesiredDirection.x) + Math.abs(redPaddleDesiredDirection.y));
+								ballDirection.normalize();
+								if (runningNetworkGame) {
+									ballSpeed *= 1.05;
+									updateNetwork();
+								}
+								else ballSpeed *= 1.03;
+								
+								ballGlowFlag = true;
+								ballInsideCoef = 2.2;
+
+								ballTowardsBlue = true;
+							} else {
+								paddleMissSound.play({
+									volume: gameSoundVolume * 5,
+									position: ball.position
+								});
+								handleMiss(redPaddle);
+								if(runningNetworkGame){
+									sendGameState();
+								}
+							}
+						}
+					}//end if (!runningNetworkGame || (!youAreBlue && !ballTowardsBlue) )
+			
+					if (!runningNetworkGame || (youAreBlue && ballTowardsBlue) ){
+						//front wall Blue Paddle
+						if ((ball.position.z + ballRadius) > bluePaddle.position.z) {
+							ball.position.z = bluePaddle.position.z - ballRadius;
+
+							collisionResult = checkBallPaddleCollision(ball.position, bluePaddle.position);
+							if (collisionResult === true) {
+								paddleHitSound.play({
+									volume: gameSoundVolume * 3,
+									position: ball.position
+								});
+								ballDirection.reflect(frontTriangleNormal);
+								//allow steering
+								ballDirection.x += deltaXDifference;
+								ballDirection.y -= deltaYDifference;
+								ballDirection.z -= (Math.abs(deltaXDifference) + Math.abs(deltaYDifference));
+								ballDirection.normalize();
+								if (runningNetworkGame) {
+									ballSpeed *= 1.05;
+									updateNetwork();
+								}
+								else ballSpeed *= 1.03;
+			
+								ballGlowFlag = true;
+								ballInsideCoef = 2.2;
+
+								ballTowardsBlue = false;
+							} else {
+								paddleMissSound.play({
+									volume: gameSoundVolume * 5,
+									position: ball.position
+								});
+								handleMiss(bluePaddle);
+								if(runningNetworkGame){
+									sendGameState();
+								}
+							}
+						}
+					}//end if (!runningNetworkGame && (youAreBlue && ballTowardsBlue) )
+			
+				if (!runningNetworkGame || (!youAreBlue && !ballTowardsBlue) || (youAreBlue && ballTowardsBlue) ){
+
+					//left wall
+					if ((ball.position.x - ballRadius) < -halfArenaWidth) {
+						bounceSound.play({
+							volume: gameSoundVolume,
+							position: ball.position
+						});
+						ball.position.x = -halfArenaWidth + ballRadius;
+						ballDirection.reflect(leftTriangleNormal);
+						ballDirection.normalize();
+						ballGlowFlag = true;
+						ballInsideCoef = 2.2;
+
+					}
+					//right wall
+					if ((ball.position.x + ballRadius) > halfArenaWidth) {
+						bounceSound.play({
+							volume: gameSoundVolume,
+							position: ball.position
+						});
+						ball.position.x = halfArenaWidth - ballRadius;
+						ballDirection.reflect(rightTriangleNormal);
+						ballDirection.normalize();
+						ballGlowFlag = true;
+						ballInsideCoef = 2.2;
+
+					}
+					//bottom wall
+					if ((ball.position.y - ballRadius) < -halfArenaHeight) {
+						bounceSound.play({
+							volume: gameSoundVolume,
+							position: ball.position
+						});
+						ball.position.y = -halfArenaHeight + ballRadius;
+						ballDirection.reflect(bottomTriangleNormal);
+						ballDirection.normalize();
+						ballGlowFlag = true;
+						ballInsideCoef = 2.2;
+
+					}
+					//top wall
+					if ((ball.position.y + ballRadius) > halfArenaHeight) {
+						bounceSound.play({
+							volume: gameSoundVolume,
+							position: ball.position
+						});
+						ball.position.y = halfArenaHeight - ballRadius;
+						ballDirection.reflect(topTriangleNormal);
+						ballDirection.normalize();
+						ballGlowFlag = true;
+						ballInsideCoef = 2.2;
+
+					}
+
+				}//end if (!runningNetworkGame || (!youAreBlue && !ballTowardsBlue) || (youAreBlue && ballTowardsBlue) )
+
+				if (ball.position.x > 0) {
+					disc1.visible = true;
+					disc1.position.set(halfArenaWidth, ball.position.y, ball.position.z);
+					disc2.visible = false;
+				}
+				if (ball.position.x < 0) {
+					disc2.visible = true;
+					disc2.position.set(-halfArenaWidth, ball.position.y, ball.position.z);
+					disc1.visible = false;
+				}
+				if (ball.position.y > 0) {
+					disc3.visible = true;
+					disc3.position.set(ball.position.x, halfArenaHeight, ball.position.z);
+					disc4.visible = false;
+				}
+				if (ball.position.y < 0) {
+					disc4.visible = true;
+					disc4.position.set(ball.position.x, -halfArenaHeight, ball.position.z);
+					disc3.visible = false;
+				}
+
+
+			} //end if (bluePaddleMissed == false && redPaddleMissed == false && winnerCutScene == false)
+
+			if ( !runningNetworkGame || (youAreBlue && ballTowardsBlue) || (!youAreBlue && !ballTowardsBlue) ) {
+			
+				if (!missedTimer.alarmSounding && (bluePaddleMissed || redPaddleMissed) )  {
+
+					disc1.visible = false;
+					disc2.visible = false;
+					disc3.visible = false;
+					disc4.visible = false;
+
+					missedTimer.run(frameTime);
+
+					if (missedTimer.alarmSounding) {
+
+						if (blueWins || redWins) {
+							paddleWinSound.play({
+								volume: gameSoundVolume / 10.0
+							});
+							winCutSceneSound.play({
+								volume: gameSoundVolume / 10.0
+							});
+							camera.position.set(0, 100, 0);
+							winnerCutScene = true;
+
+							if (blueWins) {
+								document.getElementById("winner").style.color = "rgb(0,0,255)";
+								if (youAreBlue) winnerName = playerName;
+								else winnerName = opponentName;
+							}
+							if (redWins) {
+								document.getElementById("winner").style.color = "rgb(255,0,0)";
+								if (youAreBlue) winnerName = opponentName;
+								else winnerName = playerName;
+							}
+
+							document.getElementById("winner").innerHTML = winnerName + " WINS!";
+			
+							if(runningNetworkGame){
+								sendGameState();
+							}
+						} else {
+							gameReset = true;
+							
+							if(runningNetworkGame){
+								sendGameState();
+							}
+						}
+
+					}//end if (missedTimer.alarmSounding)
+
+				} //end if ( !missedTimer.alarmSounding && (bluePaddleMissed || redPaddleMissed) )
+			
+			} // end if ( !runningNetworkGame || (youAreBlue && ballTowardsBlue) || (!youAreBlue && !ballTowardsBlue) )
+			
+			//keep players inside arena
+			if (bluePaddle.position.x > rightWall)
+				bluePaddle.position.x = rightWall;
+			if (bluePaddle.position.x < leftWall)
+				bluePaddle.position.x = leftWall;
+			if (bluePaddle.position.y > topWall)
+				bluePaddle.position.y = topWall;
+			if (bluePaddle.position.y < bottomWall)
+				bluePaddle.position.y = bottomWall;
+
+			if (redPaddle.position.x > rightWall)
+				redPaddle.position.x = rightWall;
+			if (redPaddle.position.x < leftWall)
+				redPaddle.position.x = leftWall;
+			if (redPaddle.position.y > topWall)
+				redPaddle.position.y = topWall;
+			if (redPaddle.position.y < bottomWall)
+				redPaddle.position.y = bottomWall;
+			
+			bluePaddle.position.z = bluePaddleFixedPosZ;
+			redPaddle.position.z = redPaddleFixedPosZ;
+
+			/*
+			if (insideFlag == false){
+				insideCoef -= 1 * frameTime;
+				if (insideCoef < 0.2){
+					insideCoef = 0.2;
+					insideFlag = true;
+				}
+			}
+
+			if (insideFlag == true){
+				insideCoef += 1 * frameTime;
+				if (insideCoef > 1.9){
+					insideCoef = 1.9;
+					insideFlag = false;
+				}
+			}
+			*/
+
+			blueInsideCoef = 3 / (bluePaddle.position.distanceToSquared(ball.position) * 0.001);
+			if (blueInsideCoef < 1.15) blueInsideCoef = 1.15;
+			if (blueInsideCoef > 3) blueInsideCoef = 3;
+			blueInsideUniforms.coeficient.value = blueInsideCoef;
+
+			redInsideCoef = 3 / (redPaddle.position.distanceToSquared(ball.position) * 0.001);
+			if (redInsideCoef < 1.15) redInsideCoef = 1.15;
+			if (redInsideCoef > 3) redInsideCoef = 3;
+			redInsideUniforms.coeficient.value = redInsideCoef;
+
+			if (ballGlowFlag) {
+				ballInsideCoef -= 4.5 * frameTime;
+				if (ballInsideCoef < 1.1) {
+					ballInsideCoef = 1.1;
+					ballGlowFlag = false;
+				}
+			}
+
+			ballInsideUniforms.coeficient.value = ballInsideCoef;
+
+			if (winnerCutScene == false && youAreBlue)
+				camera.lookAt(bluePaddle.position);
+			else if (winnerCutScene == false && !youAreBlue)
+				camera.lookAt(redPaddle.position);
+			
+			if(runningNetworkGame && !sentGameState){
+				networkTimer.run(frameTime);
+				if (networkTimer.alarmSounding){
+					updateNetwork();
+				}
+			}
+			
+			sentGameState = false;
+
+			renderer.render(scene, camera);
+
+
+		} //end function animate()
+
+		function updateAI() {
+
+			//the following 2 lines provide the simplest AI ever, but, the computer will never lose! :)
+			//redPaddle.position.x = ball.position.x;
+			//redPaddle.position.y = ball.position.y;
+
+			//the following is not much more complex, but makes it look like the computer is 'trying'
+			redPaddleDesiredDirection.subVectors(ball.position, redPaddle.position);
+			redPaddleDesiredDirection.normalize();
+			redPaddle.translateOnAxis(redPaddleDesiredDirection, redPaddleMaxSpeed * frameTime);
+			redPaddle.position.z = redPaddleFixedPosZ; //clamp redPaddle's z position to back wall
+
+		}
+
+		function checkBallPaddleCollision(ballPos, paddlePos) {
+
+			if (ballPos.x > (paddlePos.x - halfPaddleWidth - 4) &&
+				ballPos.x < (paddlePos.x + halfPaddleWidth + 4) &&
+				ballPos.y > (paddlePos.y - halfPaddleHeight - 4) &&
+				ballPos.y < (paddlePos.y + halfPaddleHeight + 4))
+				return true;
+			else {
+				return false;
+			}
+
+		}
+
+		function handleMiss(paddle) {
+
+			if (paddle == bluePaddle) {
+				bluePaddleMissed = true;
+				redScore += 1;
+				document.getElementById("redscore").innerHTML = redScore;
+			}
+			if (paddle == redPaddle) {
+				redPaddleMissed = true;
+				blueScore += 1;
+				document.getElementById("bluescore").innerHTML = blueScore;
+			}
+			if (redScore > 4) {
+				redWins = true;
+			}
+			if (blueScore > 4) {
+				blueWins = true;
+			}
+
+		}
+
+		function updateHUD() {
+			var textFieldWidth = windowWidth / 5;
+			if (textFieldWidth > 300) textFieldWidth = 300;
+			if (textFieldWidth < 100) textFieldWidth = 100;
+			document.getElementById("textInput").style.width = textFieldWidth + "px";
+			
+			var fontAspect = (windowWidth / 175) * (windowHeight / 200);
+			if (fontAspect > 20) fontAspect = 20;
+			if (fontAspect < 10) fontAspect = 10;
+			
+			document.getElementById("gametitle").style.fontSize = fontAspect + "px";
+			document.getElementById("gravity").style.fontSize = fontAspect + "px";
+			document.getElementById("difficulty").style.fontSize = fontAspect + "px";
+			document.getElementById("volume").style.fontSize = fontAspect + "px";
+
+			fontAspect *= 3;
+			document.getElementById("bluescore").style.fontSize = fontAspect + "px";
+			document.getElementById("redscore").style.fontSize = fontAspect + "px";
+			document.getElementById("winner").style.fontSize = fontAspect + "px";
+			
+			fontAspect /= 4;
+			document.getElementById("help1").style.fontSize = fontAspect + "px";
+			document.getElementById("help2").style.fontSize = fontAspect + "px";
+			document.getElementById("chatLine1").style.fontSize = fontAspect + "px";
+			document.getElementById("chatLine2").style.fontSize = fontAspect + "px";
+			document.getElementById("chatLine3").style.fontSize = fontAspect + "px";
+			document.getElementById("chatLine4").style.fontSize = fontAspect + "px";
+			document.getElementById("textInput").style.fontSize = fontAspect + "px";
+			document.getElementById("submitButton").style.fontSize = fontAspect + "px";
+
+		}
+
+		function onWindowResize() {
+
+			windowWidth = window.innerWidth;
+			windowHeight = window.innerHeight;
+
+			camera.aspect = windowWidth / windowHeight;
+			camera.updateProjectionMatrix();
+
+			updateHUD();
+			renderer.setSize(windowWidth, windowHeight);
+
+		}
+
+		function gravityClickHandler() {
+			
+			if(!runningNetworkGame)
+				gravityOn = !gravityOn;
+
+			if (gravityOn) {
+				document.getElementById("gravity").innerHTML = "Gravity ON";
+				document.getElementById("gravity").style.color = "rgb(180,180,180)";
+			}
+			if (!gravityOn) {
+				document.getElementById("gravity").innerHTML = "Gravity OFF";
+				document.getElementById("gravity").style.color = "rgb(100,100,100)";
+			}
+
+		}
+
+		function difficultyClickHandler() {
+			
+			if(!runningNetworkGame)
+				difficultyLevel += 1;
+			if (difficultyLevel > 3)
+				difficultyLevel = 0;
+
+			switch (difficultyLevel) {
+				case 0:
+					document.getElementById("difficulty").innerHTML = "Difficulty: EASY";
+					redPaddleMaxSpeed = 70;
+					break;
+				case 1:
+					document.getElementById("difficulty").innerHTML = "Difficulty: MEDIUM";
+					redPaddleMaxSpeed = 110;
+					break;
+				case 2:
+					document.getElementById("difficulty").innerHTML = "Difficulty: HARD";
+					redPaddleMaxSpeed = 170;
+					break;
+				case 3:
+					document.getElementById("difficulty").innerHTML = "Difficulty: EXPERT";
+					redPaddleMaxSpeed = 230;
+					break;
+				default:
+					document.getElementById("difficulty").innerHTML = "Difficulty: MEDIUM";
+					redPaddleMaxSpeed = 110;
+			}
+
+		}
+
+		function volumeClickHandler() {
+
+			soundLevel += 1;
+			if (soundLevel > 3)
+				soundLevel = 0;
+
+			switch (soundLevel) {
+				case 0:
+					document.getElementById("volume").innerHTML = "SoundLevel: OFF";
+					gameSounds.lineOut.volume = 0.0;
+					gameSoundVolume = 0.0;
+					break;
+				case 1:
+					document.getElementById("volume").innerHTML = "SoundLevel: LOW";
+					gameSounds.lineOut.volume = 1.0;
+					gameSoundVolume = 0.4;
+					break;
+				case 2:
+					document.getElementById("volume").innerHTML = "SoundLevel: MID";
+					gameSounds.lineOut.volume = 1.0;
+					gameSoundVolume = 0.8;
+					break;
+				case 3:
+					document.getElementById("volume").innerHTML = "SoundLevel: HIGH";
+					gameSounds.lineOut.volume = 1.0;
+					gameSoundVolume = 1.0;
+					break;
+				default:
+					document.getElementById("volume").innerHTML = "SoundLevel: OFF";
+					gameSounds.lineOut.volume = 0.0;
+					gameSoundVolume = 0.0;
+			}
+
+		}
+		
+		
+	</script>
+	
+	<script src="js/SpacePongNetwork.js"></script>
+
+</body>
+
+</html>
